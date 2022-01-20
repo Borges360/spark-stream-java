@@ -1,53 +1,37 @@
 package com.spark.spark;
 
-//import org.apache.spark.streaming.Duration;
-//import java.util.*;
-//import org.apache.spark.SparkConf;
-//import org.apache.spark.TaskContext;
-//import org.apache.spark.api.java.*;
-//import org.apache.spark.api.java.function.*;
-//import org.apache.spark.streaming.api.java.*;
-//
-//import kafka.serializer.StringDecoder;
-//import org.apache.spark.streaming.kafka.KafkaUtils;
-//import scala.Tuple2;
-
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-
-
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.clients.consumer.OffsetCommitCallback;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
-import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.streaming.Duration;
 import org.apache.spark.streaming.Durations;
 import org.apache.spark.streaming.api.java.JavaInputDStream;
 import org.apache.spark.streaming.api.java.JavaDStream;
-import org.apache.spark.streaming.api.java.JavaPairDStream;
 import org.apache.spark.streaming.api.java.JavaStreamingContext;
-import org.apache.spark.streaming.kafka010.CanCommitOffsets;
 import org.apache.spark.streaming.kafka010.ConsumerStrategies;
-import org.apache.spark.streaming.kafka010.HasOffsetRanges;
 import org.apache.spark.streaming.kafka010.KafkaUtils;
 import org.apache.spark.streaming.kafka010.LocationStrategies;
-import org.apache.spark.streaming.kafka010.OffsetRange;
-import scala.Tuple2;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.sns.SnsClient;
+import software.amazon.awssdk.services.sns.model.PublishRequest;
+import software.amazon.awssdk.services.sns.model.PublishResponse;
+import software.amazon.awssdk.services.sns.model.SnsException;
 
+public class SparkApplication implements Serializable {
 
-public class SparkApplication {
+    static String topicArn = "arn:aws:sns:us-east-1:464886851843:topicSns";
+    static SnsClient snsClient = SnsClient.builder()
+            .region(Region.US_EAST_1)
+            .build();
 
     public static void main(String[] args) throws InterruptedException {
+
         System.setProperty("hadoop.home.dir", "c:/hadoop");
         org.apache.log4j.Logger.getLogger("org.apache").setLevel(org.apache.log4j.Level.WARN);
         Logger.getLogger("org.apache.spark.storage").setLevel(Level.ERROR);
@@ -70,8 +54,9 @@ public class SparkApplication {
                 ConsumerStrategies.Subscribe(topics, params));
 
 
-
         JavaDStream<String> data = stream.map(v -> {
+            pubTopic(snsClient, v.value(), topicArn);
+
             return v.value();    // mapping to convert into spark D-Stream
         });
 
@@ -86,6 +71,23 @@ public class SparkApplication {
 
         sc.start();
         sc.awaitTermination();
+    }
+
+    public static void pubTopic(SnsClient snsClient, String message, String topicArn) {
+
+        try {
+            PublishRequest request = PublishRequest.builder()
+                    .message(message)
+                    .topicArn(topicArn)
+                    .build();
+
+            PublishResponse result = snsClient.publish(request);
+            System.out.println(result.messageId() + " Message sent. Status is " + result.sdkHttpResponse().statusCode());
+
+        } catch (SnsException e) {
+            System.err.println(e.awsErrorDetails().errorMessage());
+            System.exit(1);
+        }
     }
 
 }
